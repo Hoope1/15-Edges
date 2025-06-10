@@ -374,4 +374,145 @@ def run_bdcn(path: str, target_size: tuple = None) -> np.ndarray:
         img = cv2.imread(path)
         if img is None:
             raise ValueError(f"Bild konnte nicht geladen werden: {path}")
-        edge = BDCNE
+        edge = BDCNEdgeDetector().detect(img)
+        result = (edge * 255).astype('uint8')
+        return standardize_output(result, target_size)
+    except ImportError:
+        # Fallback: Verwende eine Kombination aus Canny und morphologischen Operationen
+        print("[fallback] BDCN nicht verfügbar, verwende Canny-basierte Alternative")
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            raise ValueError(f"Bild konnte nicht geladen werden: {path}")
+        
+        # Gaussianisches Rauschen reduzieren
+        img_blur = cv2.GaussianBlur(img, (5, 5), 0)
+        
+        # Canny Edge Detection mit optimierten Parametern
+        edges = cv2.Canny(img_blur, 50, 150)
+        
+        # Morphologische Operationen für bessere Kantenkontinuität
+        kernel = np.ones((3, 3), np.uint8)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_DILATE, kernel, iterations=1)
+        
+        return standardize_output(edges, target_size)
+
+def run_fixed_cnn(path: str, target_size: tuple = None) -> np.ndarray:
+    """Fixed CNN Edge Detector (Sobel-basiert)"""
+    gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise ValueError(f"Bild konnte nicht geladen werden: {path}")
+    k = torch.tensor([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=torch.float32)
+    cx = torch.nn.Conv2d(1,1,3,padding=1,bias=False)
+    cx.weight.data = k.unsqueeze(0).unsqueeze(0)
+    cy = torch.nn.Conv2d(1,1,3,padding=1,bias=False)
+    cy.weight.data = k.t().unsqueeze(0).unsqueeze(0)
+    with torch.no_grad():
+        t = torch.tensor(gray / 255.0, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        e = torch.sqrt(cx(t) ** 2 + cy(t) ** 2).squeeze().numpy()
+    result = (e * 255).astype('uint8')
+    return standardize_output(result, target_size)
+
+def run_multi_scale_canny(path: str, target_size: tuple = None) -> np.ndarray:
+    """Multi-Scale Canny - kombiniert verschiedene Skalen"""
+    gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise ValueError(f"Bild konnte nicht geladen werden: {path}")
+    
+    # Verschiedene Blur-Level für Multi-Scale
+    edges_combined = np.zeros_like(gray, dtype=np.float32)
+    
+    # Scale 1: Feine Details
+    blur1 = cv2.GaussianBlur(gray, (3, 3), 0.5)
+    edges1 = cv2.Canny(blur1, 50, 150)
+    edges_combined += edges1.astype(np.float32) * 0.4
+    
+    # Scale 2: Mittlere Details
+    blur2 = cv2.GaussianBlur(gray, (5, 5), 1.0)
+    edges2 = cv2.Canny(blur2, 30, 100)
+    edges_combined += edges2.astype(np.float32) * 0.4
+    
+    # Scale 3: Grobe Strukturen
+    blur3 = cv2.GaussianBlur(gray, (7, 7), 1.5)
+    edges3 = cv2.Canny(blur3, 20, 80)
+    edges_combined += edges3.astype(np.float32) * 0.2
+    
+    result = np.clip(edges_combined, 0, 255).astype(np.uint8)
+    return standardize_output(result, target_size)
+
+def run_adaptive_canny(path: str, target_size: tuple = None) -> np.ndarray:
+    """Adaptive Canny - passt Schwellwerte automatisch an"""
+    gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise ValueError(f"Bild konnte nicht geladen werden: {path}")
+    
+    # Berechne adaptive Schwellwerte basierend auf Histogramm
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # Median als Basis für adaptive Schwellwerte
+    median = np.median(blur)
+    sigma = 0.33  # Faktor für Schwellwert-Berechnung
+    
+    lower = int(max(0, (1.0 - sigma) * median))
+    upper = int(min(255, (1.0 + sigma) * median))
+    
+    edges = cv2.Canny(blur, lower, upper)
+    return standardize_output(edges, target_size)
+
+def run_morphological_gradient(path: str, target_size: tuple = None) -> np.ndarray:
+    """Morphological Gradient Edge Detection"""
+    gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        raise ValueError(f"Bild konnte nicht geladen werden: {path}")
+    
+    # Verschiedene Kernel-Größen für Multi-Scale
+    kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    kernel_medium = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    
+    # Morphological Gradient
+    gradient_small = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, kernel_small)
+    gradient_medium = cv2.morphologyEx(gray, cv2.MORPH_GRADIENT, kernel_medium)
+    
+    # Kombiniere verschiedene Skalen
+    combined = cv2.addWeighted(gradient_small, 0.7, gradient_medium, 0.3, 0)
+    return standardize_output(combined, target_size)
+
+# ------------------------------------------------------
+# Alle verfügbaren Methoden definieren
+# ------------------------------------------------------
+
+def get_all_methods():
+    """Gibt alle verfügbaren Edge Detection Methoden zurück"""
+    return [
+        ('HED_OpenCV', run_hed),
+        ('HED_PyTorch', run_pytorch_hed),
+        ('StructuredForests', run_structured),
+        ('Kornia_Canny', run_kornia_canny),
+        ('Kornia_Sobel', run_kornia_sobel),
+        ('Laplacian', run_laplacian),
+        ('Prewitt', run_prewitt),
+        ('Roberts', run_roberts),
+        ('Scharr', run_scharr),
+        ('GradientMagnitude', run_gradient_magnitude),
+        ('BDCN', run_bdcn),
+        ('FixedCNN', run_fixed_cnn),
+        ('MultiScaleCanny', run_multi_scale_canny),
+        ('AdaptiveCanny', run_adaptive_canny),
+        ('MorphologicalGradient', run_morphological_gradient),
+    ]
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser()
+    p.add_argument('--init-models', action='store_true')
+    p.add_argument('--list-methods', action='store_true', help='Liste alle verfügbaren Methoden auf')
+    args = p.parse_args()
+    
+    if args.init_models:
+        init_models()
+    elif args.list_methods:
+        print("Verfügbare Edge Detection Methoden:")
+        methods = get_all_methods()
+        for i, (name, _) in enumerate(methods, 1):
+            print(f"{i:2d}. {name}")
+    else:
+        print("Verwende --init-models zum Initialisieren oder --list-methods zum Auflisten aller Methoden")
