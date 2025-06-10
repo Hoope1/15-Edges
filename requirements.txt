@@ -1,0 +1,35 @@
+# GUI Framework
+streamlit>=1.28.0             # Moderne Web-GUI
+plotly>=5.0.0                 # Interaktive Diagramme (optional)
+
+# Basis Computer Vision
+opencv-python>=4.5.0
+opencv-contrib-python>=4.5.0   # Für StructuredForests und erweiterte Algorithmen
+
+# Deep Learning Frameworks
+torch>=1.9.0                   # CPU-Version – GPU-User sollten passende Build wählen
+torchvision>=0.10.0           # Für zusätzliche Vision-Funktionen
+
+# GPU-beschleunigte Computer Vision
+kornia>=0.6.0                 # GPU-beschleunigte Canny/Sobel und andere Filter
+
+# Zusätzliche Edge Detection Methoden
+pytorch-hed                   # Pip-installierbare HED Implementation
+
+# Basis-Bibliotheken
+numpy>=1.21.0                 # Numerische Berechnungen
+pillow>=8.0.0                 # Bildverarbeitung und PIL Integration
+requests>=2.25.0              # Für Model-Downloads
+
+# GUI-spezifische Abhängigkeiten
+watchdog>=2.1.0              # Für Streamlit File-Watching
+click>=7.0                   # Command-Line Interface
+altair>=4.0.0                # Visualisierungen (von Streamlit verwendet)
+
+# Optional: Für erweiterte Visualisierung und Analyse
+matplotlib>=3.3.0             # Plots und Visualisierungen (optional)
+scikit-image>=0.18.0          # Zusätzliche Bildverarbeitungsalgorithmen (optional)
+
+# Development und Testing (optional)
+# pytest>=6.0.0              # Für Unit Tests
+# jupyter>=1.0.0             # Für interaktive Entwicklung
